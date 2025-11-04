@@ -1,0 +1,216 @@
+---
+title: "STATS-506-Homework-4"
+subtitle: "https://github.com/TransparentBlu3/STATS-506-Homework-4"
+author: "Yiping Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+    code-summary: "Show the code"
+    code-overflow: wrap
+editor: visual
+---
+
+# Problem 1
+
+```{r}
+library(tidyverse)
+library(nzelect)
+df <- nzge
+```
+
+## a.
+
+```{r}
+tibble(df %>% 
+         group_by(voting_type, election_year) %>%
+         summarise(count = sum(votes)) %>%
+         arrange(count))
+```
+
+## b.
+
+```{r}
+tibble(df %>%
+         filter(election_year == 2014) %>%
+         group_by(party) %>%
+         summarise(count = sum(votes),
+                   proportion = count/sum(df[df$election_year == 2014,]$votes)) %>%
+         select(-count) %>%
+         arrange(proportion))
+```
+
+## c.
+
+```{r}
+df_votecounts <- df %>%
+  group_by(voting_type, election_year, party) %>%
+  summarise(count = sum(votes))
+df_ref <- df_votecounts %>%
+  group_by(voting_type, election_year)%>%
+  summarise(max = max(count))
+df_results <- df_votecounts %>%
+  left_join(df_ref, by = join_by(voting_type, election_year)) %>%
+  filter(count == max) %>%
+  select(election_year, party, voting_type)%>%
+  arrange(election_year)
+tibble(df_results)
+```
+
+# Problem 2
+
+```{r}
+atp_matches <- read.csv("atp_matches_2019.csv")
+```
+
+## a.
+
+```{r}
+nrow(atp_matches %>%
+       group_by(tourney_id, tourney_name) %>%
+       count())
+```
+
+There were total of 128 tournaments that took place in 2019.
+
+## b.
+
+```{r}
+atp_matches %>%
+  filter(round == "F") %>%
+  dim()
+```
+
+There were only 67 tournaments with a final game, but remembering that we have 128 total, so if we check for the rest, we can see that they are all listed round "RR". I do not know about tennis, so I searched online. My search results indicate that the winner of any RR round does not indicate winning the whole tournament, instead, the player with the most wins would be the champion. Therefore, I used an if and else statement in the following code to spot the winners of all of the tournaments.
+
+```{r}
+wincount <- atp_matches %>%
+  group_by(tourney_id, tourney_name) %>%
+  summarise(winner = if(any(round == "F")) {
+    winner_name[round == "F"]
+  } else {
+    winner_counts = table(winner_name)
+    names(which.max(winner_counts))
+  }) %>%
+  ungroup() %>% 
+  group_by(winner) %>%
+  summarise(wincount = n()) %>%
+  filter(wincount > 1) 
+wincount %>%
+  nrow()
+wincount %>%
+  arrange(desc(wincount)) %>%
+  head(1)
+```
+
+Yes, there were total of 22 players wining more than one tournament and the most winning player won 7 tournaments total.
+
+## c.
+
+```{r}
+atp_matches %>%
+  select(w_ace, l_ace) %>%
+  pivot_longer(cols = c(w_ace, l_ace),
+               names_to = "result",
+               values_to = "aces") %>%
+  group_by(result) %>%
+  summarise(mean_aces = mean(aces, na.rm = TRUE),
+            sd_aces = sd(aces, na.rm = TRUE)) %>%
+  ungroup()%>%
+  mutate(meandiff = mean_aces[2] - mean_aces[1],
+  se = sqrt((sd_aces[2]^2 / nrow(atp_matches)) + (sd_aces[1]^2 / nrow(atp_matches))),
+  t = meandiff / se,
+  df = nrow(atp_matches) - 1,
+  p_value = 1 - pt(t, df)) %>%
+  pivot_wider(names_from = result, values_from = c(mean_aces, sd_aces))
+```
+
+Applying the one-tail t test, we can see that the p-value is smaller than $\alpha = 0.05$. Therefore, we say that we have enough evidence to reject the NULL and accept the alternative that winners have significantly more aces than losers at $\alpha = 0.05$.
+
+## d.
+
+```{r}
+atp_matches %>%
+  select(winner_id, loser_id, winner_name, loser_name) %>%
+  pivot_longer(cols = c(winner_id, loser_id, winner_name, loser_name), names_to = c("result", ".value"), names_sep = "_") %>%
+  group_by(id, name) %>%
+  summarise(matchcount = n(),
+            wincount = sum(result == "winner"),
+            winrate = wincount/matchcount) %>%
+  filter(matchcount >= 5) %>%
+  arrange(desc(winrate)) %>%
+  select(name, winrate) %>%
+  head(1)
+  
+
+```
+
+The player with the highest win-rate is Rafael Nadal with a 86.956% win-rate.
+
+# Problem 3
+
+```{r}
+covid_df <- read.csv("us-states.csv")
+covid_df$date <- as.Date(covid_df$date)
+```
+
+## a.
+
+```{r}
+covid_us <- covid_df %>%
+  group_by(date)%>%
+  mutate(total_newcases = sum(cases))
+with(covid_us, plot(total_newcases ~ date, type = "l", ylab = "Total New Cases"))
+```
+
+From merely looking at the plot, we can find 4 minor spikes between 2021 and 2023 and 1 major spike at 2022.
+
+## b.
+
+```{r}
+covid_df1 <- covid_df %>%
+  group_by(state) %>%
+  mutate(cases_overall_population = sum(cases_avg_per_100k))
+covid_df1$state[which.max(covid_df1$cases_overall_population)]
+covid_df1$state[which.min(covid_df1$cases_overall_population)]
+with(covid_df[covid_df$state == "Rhode Island", ], plot(cases_avg_per_100k ~ date, ylim = c(min(covid_df$cases_avg_per_100k), max(covid_df$cases_avg_per_100k)), type = "l", main = "Figure 1. Rhode Island's New Cases Average per 100k population vs. Date", ylab = "New Cases Average per 100k"))
+with(covid_df[covid_df$state == "Maine", ], plot(cases_avg_per_100k ~ date, type = "l", ylim = c(min(covid_df$cases_avg_per_100k), max(covid_df$cases_avg_per_100k)), main = "Figure 2. Maine's New Cases Average per 100k population vs. Date", ylab = "New Cases Average per 100k"))
+
+```
+
+We should first find which state had the maximum average cases per population over time and the state with the minimum of that. To do that, I grouped over state and summed the cases_avg_per_100k from the data set and found that the maximum was Rhode Island and the minimum was Maine.
+
+Comparing figure 1 to figure 2, we can see that the peaks are much higher for figure 2 at all local extremes. The difference between number of cases is most obvious when it reaches 2022 that Rhode Island had a peak of around 500 new cases per 100 k population while Maine only had approximately 80 at its maximum. Also, figure 2 had a small peak in 2020 whereas figure 1 was all time flat in 2020.
+
+## c.
+
+Let's assume that if the average cases per 100 k population of 3 consecutive days is more than 20 is considered a substantial experience with covid for a particular state.
+
+```{r}
+substantial_test <- function(n, threshold = 20, day = 3){
+  n2 <- c(n[-1], NA)
+  n3 <- c(n2[-1], NA)
+  avg <- apply(data.frame(n, n2, n3), 1, mean, na.rm = TRUE)
+  result <- which(avg > threshold)[1]
+  return(result)
+}
+
+states <- unique(covid_df$state)
+
+first_experience <- vector(mode = "numeric", length = length(states))
+
+for (i in 1:length(states)){
+    first_experience[i] <- substantial_test(n = covid_df[covid_df$state == states[i],]$cases_avg_per_100k)
+}
+
+first_5 <- data.frame(states, first_experience) %>%
+  arrange(first_experience) %>%
+  head(5)
+first_5$states
+
+for (i in first_5$states){
+  with(covid_df[covid_df$state == i, ], plot(cases_avg_per_100k ~ date, type = "l", ylim = c(min(covid_df$cases_avg_per_100k), max(covid_df$cases_avg_per_100k)), main = paste(i, "'s New Cases Average per 100k population vs. Date", ylab = "New Cases Average per 100k")))
+}
+```
+
+The five states with the earliest substantial experience with covid are New York, Guam, Louisiana, New Jersey, and Connecticut up to our assumption.
